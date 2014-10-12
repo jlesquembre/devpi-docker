@@ -40,8 +40,10 @@ Command reference
 - devpi-docker rm
     Stop and remove the docker containers
 
-    .. note:: You will lose all your devpi configuration and packages. Do a
-              backup before!
+    .. note::
+
+        You will lose all your devpi configuration and packages. Do a
+        backup before!
 
 - devpi-docker gen_cert
     Generate a new ssl certificate for nginx
@@ -56,7 +58,6 @@ Devpi client quick start
 ------------------------
 
 #. Create a user
-
     .. code-block:: bash
 
         devpi user -c $USER
