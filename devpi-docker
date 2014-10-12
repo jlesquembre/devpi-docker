@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+
+
+# Get current script directory
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Define image names
+nginx_i="devpi_nginx_image"
+devpi_i="devpi_devpi_image"
+
+declare -a dirs=("nginx" "devpi")
+
+
+# Define container names
+nginx="devpi.nginx"
+devpi="devpi.devpi"
+cert="devpi.gen_cert"
+box="devpi.box"
+
+
+cert_dir=$HOME/devpi_certs
+cert=$cert_dir/nginx.crt
+
+
+function generate_ssl_cert {
+    docker run -d --name $cert \
+        -v $cert_dir:/etc/nginx/ssl \
+        -v $DIR/openssl/openssl.cnf:/srv/ssl/openssl.cnf \
+        base/archlinux openssl req -x509 -nodes -days 365 -newkey rsa:4096  -subj "/O=devpi" \
+            -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt -config /srv/ssl/openssl.cnf
+}
+
+function start_nginx {
+    echo "Starting nginx..."
+    docker run -d --name $nginx \
+        -e SERVICE_NAME=devpi \
+        -p 3141:80 \
+        -p 3142:443 \
+        --link $devpi:devpi \
+        --volumes-from $devpi \
+        -v $cert_dir:/etc/nginx/ssl \
+        $nginx_i
+}
+
+function start_devpi {
+    echo "Starting devpi...."
+    docker run -d --name $devpi \
+        -e DEVPI_SERVERDIR=/srv/devpi \
+        --volumes-from $box \
+        $devpi_i
+}
+
+function start_box {
+    docker run --name $box \
+        -e DEVPI_SERVERDIR=/srv/devpi \
+        -v /srv/devpi \
+        busybox echo
+}
+
+function update {
+    # Better solution for updates:
+    # https://github.com/docker/docker/issues/2733
+    # or use docker exec on docker 1.3
+
+    docker build --no-cache=false --tag="devpi_i" devpi
+    backup
+    docker stop $nginx $devpi
+    docker rm $nginx $devpi
+    start_box
+    restore
+    start_devpi
+    start_nginx
+    docker rmi `docker images -q --filter "dangling=true"`
+
+
+}
+
+function backup {
+    docker run --rm --volumes-from $box \
+        -v $(pwd)/_backup:/backup \
+        base/archlinux \
+        tar czvf /backup/devpi.tgz -C /srv/devpi .
+}
+
+function restore {
+    docker run --rm --volumes-from $box \
+        -v $(pwd)/_backup:/backup \
+        base/archlinux \
+        tar xzf /backup/devpi.tgz  -C /srv/devpi
+}
+
+
+function start {
+    echo 'Start'
+
+    # check if images exits, if not create
+    for dir in "${dirs[@]}"
+    do
+        image="$dir"_i
+        docker inspect ${!image}:latest &> /dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Image NOT exist"
+            docker build --tag="${!image}" $dir
+        else
+            echo "Image exist"
+        fi
+    done
+
+    # Check if we have the container, create or run
+    docker inspect $nginx &> /dev/null
+    if [[ $? -ne 0 ]]; then
+        echo "Container NOT exist"
+        generate_ssl_cert
+        start_box
+        start_devpi
+        start_nginx
+    else
+        echo "Container exist"
+        docker start $devpi
+        docker start $nginx
+    fi
+}
+
+
+function stop {
+    echo 'Stopping containers...'
+    docker stop $nginx
+    docker stop $devpi
+}
+
+function remove {
+    docker stop $nginx $devpi
+    docker rm $nginx $devpi $cert $box
+}
+
+function local_install {
+    # Chromium
+    certutil -d sql:$HOME/.pki/nssdb -L -n devpi &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo "Updating cert..."
+        certutil -d sql:$HOME/.pki/nssdb -D -n devpi &> /dev/null
+    fi
+    certutil -d sql:$HOME/.pki/nssdb -A -t P -n devpi -i $cert
+    echo "You need to restart chrome"
+    echo "TIP: Type this in the address bar and press Enter:"
+    echo "chrome://restart/"
+    echo ""
+
+    # Firefox
+    #local profile=$HOME/.mozilla/firefox/`cat ~/.mozilla/firefox/profiles.ini | grep Path | sed s/Path=//`
+    #certutil -d $profile -A -t P -n devpi -i $cert_dir/nginx.crt
+
+    local pipconf=$HOME/.pip/pip.conf
+    if [[ -f $pipconf ]]; then
+        echo "~/.pip/pip.conf already exists!!!"
+        echo "~/.pip/pip.conf.sample was generated, merge it manually with you current pip.conf"
+        local pipconf=$HOME/.pip/pip.conf.sample
+
+    fi
+
+    echo "[global]" > $pipconf
+    echo "index-url = https://devpi:3142/root/pypi/+simple/" >> $pipconf
+    echo "cert = $cert" >> $pipconf
+
+    echo
+    echo "Until devpi issue #64 is implemented, you need to set REQUESTS_CA_BUNDLE environment variable"
+    echo "export REQUESTS_CA_BUNDLE=$cert"
+
+}
+
+function print_help {
+    cat <<-_EOF
+Usage:
+
+    $PROGRAM start
+        Setup and run devpi using docker containers
+
+    $PROGRAM stop
+        Stop the docker containers
+
+    $PROGRAM update
+        Update devpi to the latest version
+
+    $PROGRAM rm
+        Stop and remove the docker containers
+
+    $PROGRAM gen_cert
+        Generate a new ssl certificate for nginx
+
+    $PROGRAM local_install
+        Install the ssl certificate in chromium/chrome database and generate a
+        basic pip.conf file
+_EOF
+}
+
+
+PROGRAM="${0##*/}"
+COMMAND="$1"
+
+case "$COMMAND" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    rm)
+        remove
+        ;;
+    update)
+        update
+        ;;
+    gen_cert)
+        docker rm $cert
+        generate_ssl_cert
+        # Run `nginx -s reload` on nginx container, requieres docker 1.3
+        #docker exec -d $nginx nginx -s reload
+        ;;
+    local_install)
+        local_install
+        ;;
+    backup)
+        backup
+        ;;
+    restore)
+        restore
+        ;;
+    *)
+        print_help
+        ;;
+esac
