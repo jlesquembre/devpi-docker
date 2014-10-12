@@ -19,11 +19,11 @@ box="devpi.box"
 
 
 cert_dir=$HOME/devpi_certs
-cert=$cert_dir/nginx.crt
+cert_path=$cert_dir/nginx.crt
 
 
 function generate_ssl_cert {
-    docker run -d --name $cert \
+    docker run --rm --name $cert \
         -v $cert_dir:/etc/nginx/ssl \
         -v $DIR/openssl/openssl.cnf:/srv/ssl/openssl.cnf \
         base/archlinux openssl req -x509 -nodes -days 365 -newkey rsa:4096  -subj "/O=devpi" \
@@ -140,7 +140,7 @@ function local_install {
         echo "Updating cert..."
         certutil -d sql:$HOME/.pki/nssdb -D -n devpi &> /dev/null
     fi
-    certutil -d sql:$HOME/.pki/nssdb -A -t P -n devpi -i $cert
+    certutil -d sql:$HOME/.pki/nssdb -A -t P -n devpi -i $cert_path
     echo "You need to restart chrome"
     echo "TIP: Type this in the address bar and press Enter:"
     echo "chrome://restart/"
@@ -160,11 +160,11 @@ function local_install {
 
     echo "[global]" > $pipconf
     echo "index-url = https://devpi:3142/root/pypi/+simple/" >> $pipconf
-    echo "cert = $cert" >> $pipconf
+    echo "cert = $cert_path" >> $pipconf
 
     echo
     echo "Until devpi issue #64 is implemented, you need to set REQUESTS_CA_BUNDLE environment variable"
-    echo "export REQUESTS_CA_BUNDLE=$cert"
+    echo "export REQUESTS_CA_BUNDLE=$cert_path"
 
 }
 
@@ -211,7 +211,6 @@ case "$COMMAND" in
         update
         ;;
     gen_cert)
-        docker rm $cert
         generate_ssl_cert
         # Run `nginx -s reload` on nginx container, requieres docker 1.3
         #docker exec -d $nginx nginx -s reload
