@@ -5,8 +5,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Define image names
-nginx_i="devpi_nginx_image"
-devpi_i="devpi_devpi_image"
+nginx_i="jlle/devpi_nginx_image"
+devpi_i="jlle/devpi_devpi_image"
 
 declare -a dirs=("nginx" "devpi")
 
