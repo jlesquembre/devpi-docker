@@ -160,6 +160,8 @@ function local_install {
 
     echo "[global]" > $pipconf
     echo "index-url = https://devpi:3142/root/pypi/+simple/" >> $pipconf
+    echo "# Alternatively use localhost" >> $pipconf
+    echo "# index-url = https://localhost:3142/root/pypi/+simple/" >> $pipconf
     echo "cert = $cert_path" >> $pipconf
 
     echo

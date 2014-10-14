@@ -61,6 +61,8 @@ Devpi client quick start
     .. code-block:: bash
 
         devpi use https://devpi:3142
+        # OR use localhost if you don't use consul
+        devpi use https://localhost:3142
 
 #. Create a user
     .. code-block:: bash
