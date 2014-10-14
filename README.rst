@@ -57,6 +57,11 @@ Command reference
 Devpi client quick start
 ------------------------
 
+#. Use devpi-docker index
+    .. code-block:: bash
+
+        devpi use https://devpi:3142
+
 #. Create a user
     .. code-block:: bash
 
